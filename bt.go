@@ -46,6 +46,9 @@ func matchSegSeq(segs []segment, pathSegs []string, opts Options) bool {
 	if len(pathSegs) == 0 {
 		return false
 	}
+	if !opts.Dot && segmentNeedsDotGuard(s.nodes) && strings.HasPrefix(pathSegs[0], ".") {
+		return false
+	}
 	if !matchNodesFull(s.nodes, []rune(pathSegs[0]), opts) {
 		return false
 	}
@@ -95,15 +98,9 @@ func matchFromUncached(nodes []node, ni int, s []rune, si int, opts Options, mem
 		if si >= len(s) {
 			return false
 		}
-		if si == 0 && !opts.Dot && s[si] == '.' {
-			return false
-		}
 		return matchFrom(nodes, ni+1, s, si+1, opts, memo)
 	case nStar:
 		for k := 0; si+k <= len(s); k++ {
-			if k > 0 && si == 0 && !opts.Dot && s[0] == '.' {
-				break
-			}
 			if matchFrom(nodes, ni+1, s, si+k, opts, memo) {
 				return true
 			}
@@ -111,9 +108,6 @@ func matchFromUncached(nodes []node, ni int, s []rune, si int, opts Options, mem
 		return false
 	case nClass:
 		if si >= len(s) {
-			return false
-		}
-		if si == 0 && !opts.Dot && s[si] == '.' {
 			return false
 		}
 		if !classMatches(nd.cls, s[si]) {

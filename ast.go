@@ -55,19 +55,13 @@ func parsePattern(pattern string, opts Options) ([]segment, error) {
 }
 
 // isGlobstarSegment reports whether a single path segment (no "/" inside)
-// consists of only "*" characters with at least two of them, i.e. "**",
-// "***", etc. picomatch collapses any run of 2+ stars in its own segment to
-// a globstar.
+// is exactly "**". picomatch only treats precisely two stars occupying a
+// whole segment as a globstar; a run of three or more ("***") is not
+// special at all and behaves exactly like a single "*" (verified against
+// picomatch: isMatch('a/b', '***') is false, the same as isMatch('a/b',
+// '*'), while isMatch('ab', '***') is true).
 func isGlobstarSegment(seg string) bool {
-	if len(seg) < 2 {
-		return false
-	}
-	for _, r := range seg {
-		if r != '*' {
-			return false
-		}
-	}
-	return true
+	return seg == "**"
 }
 
 // splitSegments splits on "/" that is not escaped and not inside a bracket
@@ -156,8 +150,21 @@ func parseSegment(seg string, opts Options) ([]node, error) {
 			out = append(out, node{kind: nExt, ext: byte(c), alts: parsedAlts})
 			i = end + 1 // skip past closing ')'
 		case c == '*':
+			// picomatch collapses any run of consecutive "*" within a
+			// segment to a single star node — "a***b" behaves exactly
+			// like "a*b" — not just the whole-segment "**"/"***" cases
+			// isGlobstarSegment already handles. Collapsing here also
+			// keeps exactly one star node per run, which matters for the
+			// terminal-star handling in regex.go (renderSegments): with
+			// three separate un-collapsed star nodes, RE2's own greedy
+			// resolution of the first two can consume everything and
+			// starve the third, wrongly tripping its "was anything left"
+			// guard.
 			out = append(out, node{kind: nStar})
 			i++
+			for i < len(rs) && rs[i] == '*' {
+				i++
+			}
 		case c == '?':
 			out = append(out, node{kind: nAnyChar})
 			i++
@@ -225,10 +232,16 @@ func parseExtglob(rs []rune, start int) (end int, alts []string, err error) {
 
 // parseClass parses a bracket expression starting at rs[i] == '['. It
 // returns the classSpec and the index of the matching ']'.
+//
+// Only "^" negates, matching picomatch: unlike some shells' extglob mode,
+// picomatch does not treat a leading "!" inside "[...]" as negation, so
+// "[!x]" is a positive class containing the literal characters '!' and 'x'
+// (confirmed against picomatch: isMatch('axd', 'a[!bc]d') is false, and
+// isMatch('abd', 'a[!bc]d') is true because 'b' is a literal member).
 func parseClass(rs []rune, i int) (classSpec, int, error) {
 	j := i + 1
 	negate := false
-	if j < len(rs) && (rs[j] == '!' || rs[j] == '^') {
+	if j < len(rs) && rs[j] == '^' {
 		negate = true
 		j++
 	}

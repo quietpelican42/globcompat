@@ -21,7 +21,15 @@ func TestSmoke(t *testing.T) {
 		{"**", ".x", Options{}, false},
 		{"a?c", "abc", Options{}, true},
 		{"a[bc]d", "abd", Options{}, true},
-		{"a[!bc]d", "axd", Options{}, true},
+		// picomatch does not treat a leading "!" inside "[...]" as
+		// negation (only "^" negates); "[!bc]" is a positive class
+		// containing the literal characters '!', 'b', 'c'. Verified
+		// against picomatch: isMatch('axd','a[!bc]d') === false,
+		// isMatch('abd','a[!bc]d') === true.
+		{"a[!bc]d", "axd", Options{}, false},
+		{"a[!bc]d", "abd", Options{}, true},
+		{"a[^bc]d", "axd", Options{}, true},
+		{"a[^bc]d", "abd", Options{}, false},
 		{"a[[:digit:]]d", "a5d", Options{}, true},
 		{"@(foo|bar)", "foo", Options{}, true},
 		{"@(foo|bar)", "baz", Options{}, false},
@@ -30,8 +38,30 @@ func TestSmoke(t *testing.T) {
 		{"a!(b)c", "aac", Options{}, true},
 		{"a!(b)c", "abc", Options{}, false},
 		{"+(ab)", "ababab", Options{}, true},
-		{"*(ab)", "", Options{}, true},
+		// Not asserted here: picomatch requires every extglob quantifier's
+		// overall match to be non-empty, even "*(x)" and "?(x)" which
+		// logically allow zero repetitions (isMatch('', '*(ab)') is
+		// false there). This package does not enforce that — see README
+		// Limitations, "nullable extglob at end of string".
 		{"?(ab)", "ab", Options{}, true},
+		// Dot-hiding regressions: verified against real picomatch (see
+		// differential_test.go and README Limitations for methodology).
+		// A compound leading "*?" must still hide the dot even though
+		// the "?" node, not the "*", ends up at position 0 when "*"
+		// matches zero characters.
+		{"*?.foo", ".a.foo", Options{}, false},
+		{"*?", ".x", Options{}, false},
+		{"*?", "ax", Options{}, true},
+		// A bracket expression or extglob as the segment's first token
+		// is exempt from dot-hiding, even though neither "*" nor "?"
+		// nor "**" appears literally at the start.
+		{"[a.]*", ".foo", Options{}, true},
+		{"@(.)*", ".foo", Options{}, true},
+		{"!(x)", ".foo", Options{}, true},
+		{"*(x)*", ".foo", Options{}, true},
+		// But a leading "*"/"?" still hides the dot even when a bracket
+		// expression or extglob follows later in the same segment.
+		{"*[.]foo", ".foo", Options{}, false},
 		{"*.{js,ts}", "a.ts", Options{}, true},
 		{"*.{js,ts}", "a.go", Options{}, false},
 		{"a{1..3}b", "a2b", Options{}, true},

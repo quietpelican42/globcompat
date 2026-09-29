@@ -35,7 +35,7 @@ const (
 	patternsSHA256  = "044ff405eab3c0f08b3d1ebfcb8a8db67980fdf1ac2ae0c3fba75d197840e9f9"
 	fixturesURL     = "https://raw.githubusercontent.com/micromatch/micromatch/" + upstreamCommit + "/test/_fixtures.js"
 	fixturesSHA256  = "dc663ccb413a4a59d570c0a2702982ccf1d4901cb19c45c695bbc77250f33a41"
-	minAgreementPct = 90.0
+	minAgreementPct = 99.5
 )
 
 func TestDifferential(t *testing.T) {
