@@ -212,6 +212,9 @@ Other known gaps, not covered by the corpus:
   `!(a|b)`: picomatch then treats the leading `!` as whole-pattern negation
   and the group as bare parentheses matching the entire path (across `/`).
   Alternatives are parsed as ordinary glob text, which is an approximation.
+- The backtracking matcher (patterns with `!(...)`) does not yet apply
+  picomatch's rule that a trailing `/**` after a `*`-containing segment
+  requires the slash (`isMatch('b', '*/**')` is false); the regex path does.
 - `requireNonEmpty` (an extglob opening the pattern needs a non-empty path,
   as in picomatch) is applied to the whole pattern, not per brace
   alternative.
@@ -279,18 +282,18 @@ which stays stdlib-only. Run with `cd bench && go test -bench=. -benchmem ./...`
 Measured on Apple M5 Pro (darwin/arm64, Go 1.27.1):
 
 ```
-BenchmarkGlobcompat/literal-15    17289591    70.34 ns/op     48 B/op   1 allocs/op
-BenchmarkGlobcompat/star-15        8692964   138.7  ns/op     48 B/op   1 allocs/op
-BenchmarkGlobcompat/globstar-15    1784806   683.3  ns/op     48 B/op   1 allocs/op
-BenchmarkGlobcompat/brace-15        916636  1275    ns/op    144 B/op   1 allocs/op
-BenchmarkGlobcompat/extglob-15      299498  3894    ns/op   7584 B/op  57 allocs/op
-BenchmarkGlobcompat/nomatch-15     1479843   813.2  ns/op      0 B/op   0 allocs/op
-BenchmarkDoublestar/literal-15    34045006    34.76 ns/op      0 B/op   0 allocs/op
-BenchmarkDoublestar/star-15       31681773    39.13 ns/op      0 B/op   0 allocs/op
-BenchmarkDoublestar/globstar-15    9432873   127.0  ns/op      0 B/op   0 allocs/op
-BenchmarkDoublestar/brace-15       6970954   171.9  ns/op     32 B/op   2 allocs/op
-BenchmarkDoublestar/extglob-15    30067494    41.52 ns/op      0 B/op   0 allocs/op
-BenchmarkDoublestar/nomatch-15     8689520   134.5  ns/op      0 B/op   0 allocs/op
+BenchmarkGlobcompat/literal-15    18602427    64.45 ns/op     48 B/op   1 allocs/op
+BenchmarkGlobcompat/star-15        9206766   131.5  ns/op     48 B/op   1 allocs/op
+BenchmarkGlobcompat/globstar-15    1885818   639.9  ns/op     48 B/op   1 allocs/op
+BenchmarkGlobcompat/brace-15       1000000  1180    ns/op    144 B/op   1 allocs/op
+BenchmarkGlobcompat/extglob-15      335506  3712    ns/op   7584 B/op  57 allocs/op
+BenchmarkGlobcompat/nomatch-15     1540761   775.5  ns/op      0 B/op   0 allocs/op
+BenchmarkDoublestar/literal-15    37560186    31.33 ns/op      0 B/op   0 allocs/op
+BenchmarkDoublestar/star-15       32326932    36.48 ns/op      0 B/op   0 allocs/op
+BenchmarkDoublestar/globstar-15   10214768   118.1  ns/op      0 B/op   0 allocs/op
+BenchmarkDoublestar/brace-15       7139794   167.0  ns/op     32 B/op   2 allocs/op
+BenchmarkDoublestar/extglob-15    31010188    38.94 ns/op      0 B/op   0 allocs/op
+BenchmarkDoublestar/nomatch-15     9134247   131.6  ns/op      0 B/op   0 allocs/op
 ```
 
 doublestar is faster on every case shown — it has a simpler regex compiler

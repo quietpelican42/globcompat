@@ -67,6 +67,15 @@ func TestSmoke(t *testing.T) {
 		{"!(foo)", "a/b", Options{NoExtglob: true}, true},
 		{"!(foo)", "foo", Options{NoExtglob: true}, false},
 		{"dir/*", "dir/a.go", Options{Basename: true}, false},
+		// A trailing "/**" matches zero segments only after a segment
+		// without "*" (verified against picomatch).
+		{"*/**", "b", Options{}, false},
+		{"[!a]*/**", "a.js", Options{Dot: true}, false},
+		{"*/**", "b", Options{NoCase: true}, false},
+		{"src/**", "src", Options{}, true},
+		{"a/**", "a", Options{}, true},
+		{"*/**", "b/c", Options{}, true},
+		{"?/**", "b", Options{}, true},
 		{"**/*", "test.ts", Options{NoGlobstar: true}, true},
 		{"**/*", ".git/test.js", Options{Contains: true}, true},
 		// But a leading "*"/"?" still hides the dot even when a bracket

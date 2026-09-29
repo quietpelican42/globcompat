@@ -53,6 +53,13 @@ func renderSegments(segs []segment, opts Options, altPrefix string) (re string, 
 			switch {
 			case leading && trailing:
 				sb.WriteString(`/(?:` + mid + `/)??`)
+			case leading && !trailing && segmentHasStar(segs[idx-1]):
+				// picomatch lets a trailing "/**" match zero segments
+				// only after a segment with no "*" in it: isMatch('b',
+				// '*/**') and isMatch('a.js', 'a*/**') are false, while
+				// 'a/**' vs 'a', '?/**' vs 'b' and '[ab]/**' vs 'b' are
+				// true. After a star segment the slash is required.
+				sb.WriteString(`/` + mid)
 			case leading && !trailing:
 				sb.WriteString(`(?:/` + mid + `)??`)
 			case !leading && trailing:
@@ -319,6 +326,20 @@ func nodesContainNegatedExtglob(nodes []node) bool {
 			if nodesContainNegatedExtglob(alt) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// segmentHasStar reports whether a plain segment contains a "*" node at its
+// top level.
+func segmentHasStar(s segment) bool {
+	if s.globstar || s.optional {
+		return false
+	}
+	for _, n := range s.nodes {
+		if n.kind == nStar {
+			return true
 		}
 	}
 	return false
