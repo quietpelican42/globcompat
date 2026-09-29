@@ -74,12 +74,11 @@ func TestBreakdown(t *testing.T) {
 	if err != nil {
 		t.Skipf("could not fetch upstream test fixtures (no network?): %v", err)
 	}
-	nodeModules := filepath.Join(cacheDir, "node_modules", "picomatch")
-	if _, err := os.Stat(nodeModules); err != nil {
-		cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund", "picomatch@4")
+	if !hasNodeModules(cacheDir, "picomatch", "braces") {
+		cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund", "picomatch@4", "braces@3")
 		cmd.Dir = cacheDir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Skipf("could not npm install picomatch (no network?): %v\n%s", err, out)
+			t.Skipf("could not npm install picomatch/braces (no network?): %v\n%s", err, out)
 		}
 	}
 

@@ -26,6 +26,15 @@ func matchSegSeq(segs []segment, pathSegs []string, opts Options) bool {
 		return len(pathSegs) == 0
 	}
 	s := segs[0]
+	if s.optional {
+		if matchSegSeq(segs[1:], pathSegs, opts) {
+			return true
+		}
+		if len(pathSegs) == 0 || (!opts.Dot && strings.HasPrefix(pathSegs[0], ".")) {
+			return false
+		}
+		return matchSegSeq(segs[1:], pathSegs[1:], opts)
+	}
 	if s.globstar {
 		// Try consuming 0..len(pathSegs) path segments as the globstar,
 		// each of which must not start with "." unless dot is set.

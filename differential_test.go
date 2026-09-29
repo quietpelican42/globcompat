@@ -58,12 +58,11 @@ func TestDifferential(t *testing.T) {
 		t.Skipf("could not fetch upstream test fixtures (no network?): %v", err)
 	}
 
-	nodeModules := filepath.Join(cacheDir, "node_modules", "picomatch")
-	if _, err := os.Stat(nodeModules); err != nil {
-		cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund", "picomatch@4")
+	if !hasNodeModules(cacheDir, "picomatch", "braces") {
+		cmd := exec.Command("npm", "install", "--no-save", "--no-audit", "--no-fund", "picomatch@4", "braces@3")
 		cmd.Dir = cacheDir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Skipf("could not npm install picomatch (no network?): %v\n%s", err, out)
+			t.Skipf("could not npm install picomatch/braces (no network?): %v\n%s", err, out)
 		}
 	}
 
@@ -132,6 +131,17 @@ func TestDifferential(t *testing.T) {
 	if pct < minAgreementPct {
 		t.Errorf("agreement %.2f%% fell below the %.2f%% floor; examples:\n%s", pct, minAgreementPct, strings.Join(examples, "\n"))
 	}
+}
+
+// hasNodeModules reports whether every named package already exists under
+// dir/node_modules, so the npm install step can be skipped on a warm cache.
+func hasNodeModules(dir string, pkgs ...string) bool {
+	for _, p := range pkgs {
+		if _, err := os.Stat(filepath.Join(dir, "node_modules", p)); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func fetchPinned(dir, name, url, wantSHA256 string) (string, error) {

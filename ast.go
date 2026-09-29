@@ -31,6 +31,7 @@ type classSpec struct {
 // segment is one "/"-delimited piece of a pattern, already brace-expanded.
 type segment struct {
 	globstar bool   // true if this whole segment is "**" (and globstar enabled)
+	optional bool   // noglobstar: a leading "**/" that matches zero or one path segment
 	nodes    []node // parsed content when !globstar
 }
 
@@ -43,6 +44,12 @@ func parsePattern(pattern string, opts Options) ([]segment, error) {
 	for _, r := range raw {
 		if !opts.NoGlobstar && isGlobstarSegment(r) {
 			segs = append(segs, segment{globstar: true})
+			continue
+		}
+		if opts.NoGlobstar && len(segs) == 0 && len(raw) > 1 && isGlobstarSegment(r) {
+			// picomatch with noglobstar compiles a leading "**/" to an
+			// optional single segment: (?:(?!\.)[^/]*?\/)?
+			segs = append(segs, segment{optional: true})
 			continue
 		}
 		nodes, err := parseSegment(r, opts)

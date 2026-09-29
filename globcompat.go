@@ -38,11 +38,12 @@ const maxPatternLength = 4096
 // Matcher is a compiled glob pattern, ready to test candidate paths
 // repeatedly without re-parsing the pattern each time.
 type Matcher struct {
-	opts    Options
-	re      *regexp.Regexp // fast path; nil if backtracking is required
-	altSegs [][]segment    // backtracking path: one []segment per brace expansion
-	negated bool
-	source  string
+	opts            Options
+	re              *regexp.Regexp // fast path; nil if backtracking is required
+	altSegs         [][]segment    // backtracking path: one []segment per brace expansion
+	negated         bool
+	source          string
+	requireNonEmpty bool // see patternStartsWithExtglob
 }
 
 // Compile parses pattern under opts and returns a reusable Matcher.
@@ -55,6 +56,14 @@ type Matcher struct {
 func Compile(pattern string, opts Options) (*Matcher, error) {
 	if len(pattern) > maxPatternLength {
 		return nil, fmt.Errorf("globcompat: pattern of %d bytes exceeds the %d byte limit", len(pattern), maxPatternLength)
+	}
+
+	if opts.NoExtglob && !opts.NoNegate && strings.HasPrefix(pattern, "!(") {
+		if m, ok, err := compileNoExtglobBang(pattern, opts); err != nil {
+			return nil, err
+		} else if ok {
+			return m, nil
+		}
 	}
 
 	body := pattern
@@ -77,6 +86,7 @@ func Compile(pattern string, opts Options) (*Matcher, error) {
 
 	var allSegs [][]segment
 	needsBT := false
+	requireNonEmpty := false
 	for _, p := range patterns {
 		segs, err := parsePattern(p, opts)
 		if err != nil {
@@ -86,9 +96,12 @@ func Compile(pattern string, opts Options) (*Matcher, error) {
 		if containsNegatedExtglob(segs) {
 			needsBT = true
 		}
+		if patternStartsWithExtglob(segs) {
+			requireNonEmpty = true
+		}
 	}
 
-	m := &Matcher{opts: opts, negated: negated, source: pattern}
+	m := &Matcher{opts: opts, negated: negated, source: pattern, requireNonEmpty: requireNonEmpty}
 
 	if !needsBT {
 		var alts []string
@@ -149,10 +162,25 @@ func (m *Matcher) Match(path string) bool {
 
 func (m *Matcher) matchInner(path string) bool {
 	path = normalizePath(path, m.opts)
-	if m.opts.Basename && !strings.Contains(m.source, "/") {
+	if m.opts.Basename {
 		path = basename(path)
 	}
+	if m.requireNonEmpty && path == "" {
+		return false
+	}
 	if m.re != nil {
+		if m.opts.Contains {
+			// An unanchored regexp can match starting later in the path
+			// when the leftmost match trips a guard (picomatch's
+			// unanchored "(?!\.)" just fails there and the engine
+			// retries at the next offset), so do the same.
+			for i := 0; i <= len(path); i++ {
+				if matchWithDotGuard(m.re, path[i:]) {
+					return true
+				}
+			}
+			return false
+		}
 		return matchWithDotGuard(m.re, path)
 	}
 	for _, segs := range m.altSegs {
@@ -312,4 +340,42 @@ func IsMatch(path string, patterns []string, opts Options) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// compileNoExtglobBang reproduces a picomatch quirk: with noextglob set, a
+// pattern that is exactly "!(a|b)" is not treated as literal text. The
+// leading "!" is taken as whole-pattern negation, and the remaining bare
+// "(a|b)" group must match the entire path (across "/") for the negation
+// to reject it. picomatch compiles pm.makeRe('!(foo)', {noextglob:true}) to
+// ^(?!^(?:(foo))$).*$, so isMatch('a/b', '!(foo)', {noextglob:true}) is
+// true and isMatch('foo', ...) is false. The quirk only applies when "!(" is
+// the very start of the pattern and its ")" is the very end; elsewhere
+// noextglob leaves the text literal. ok is false when the shape doesn't fit.
+func compileNoExtglobBang(pattern string, opts Options) (*Matcher, bool, error) {
+	rs := []rune(pattern)
+	end, alts, err := parseExtglob(rs, 2)
+	if err != nil || end != len(rs)-1 {
+		return nil, false, nil
+	}
+	parsed := make([][]node, 0, len(alts))
+	for _, a := range alts {
+		nodes, err := parseSegment(a, opts)
+		if err != nil {
+			return nil, false, err
+		}
+		parsed = append(parsed, nodes)
+	}
+	group, ok := renderExtAlts(parsed, opts)
+	if !ok {
+		return nil, false, nil
+	}
+	src := "^" + group + "$"
+	if opts.NoCase {
+		src = "(?i)" + src
+	}
+	re, err := regexp.Compile(src)
+	if err != nil {
+		return nil, false, fmt.Errorf("globcompat: compiling %q: %w", pattern, err)
+	}
+	return &Matcher{opts: opts, re: re, negated: true, source: pattern}, true, nil
 }

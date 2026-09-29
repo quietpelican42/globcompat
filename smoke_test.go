@@ -59,6 +59,16 @@ func TestSmoke(t *testing.T) {
 		{"@(.)*", ".foo", Options{}, true},
 		{"!(x)", ".foo", Options{}, true},
 		{"*(x)*", ".foo", Options{}, true},
+		// Verified against picomatch: an extglob opening the pattern needs a
+		// non-empty path; noextglob still negates a whole-pattern "!(...)";
+		// basename applies even when the pattern contains a slash.
+		{"*(ab)", "", Options{}, false},
+		{"!(foo|bar)", "", Options{}, false},
+		{"!(foo)", "a/b", Options{NoExtglob: true}, true},
+		{"!(foo)", "foo", Options{NoExtglob: true}, false},
+		{"dir/*", "dir/a.go", Options{Basename: true}, false},
+		{"**/*", "test.ts", Options{NoGlobstar: true}, true},
+		{"**/*", ".git/test.js", Options{Contains: true}, true},
 		// But a leading "*"/"?" still hides the dot even when a bracket
 		// expression or extglob follows later in the same segment.
 		{"*[.]foo", ".foo", Options{}, false},

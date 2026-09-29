@@ -40,10 +40,11 @@ speed (see Reference); the differential corpus below compares match
 A pre-build research pass reported doublestar scoring 17/25 and gobwas/glob
 14/25 against micromatch on a small hand-built corpus, with both libraries
 missing extglobs and numeric brace ranges (open issues: doublestar#87,
-gobwas/glob#3). This package re-measured that on a larger, differently built
-corpus of 37,134 (pattern, path, options) cases checked against a real
-picomatch/micromatch install (methodology: `go test -tags differential -run
-TestBreakdown -v ./...`, which also drives the per-feature table below):
+gobwas/glob#3). This package re-measured that with a one-off comparison on a
+37,134-case (pattern, path, options) corpus checked against a real
+picomatch install. That run predates the latest fixes and used a corpus that
+is not committed, so its numbers are a snapshot, not reproducible from this
+repository:
 
 ```
 === Overall (n=37134) ===
@@ -53,16 +54,14 @@ gobwas/glob    n=37134  agree=32171  err=568  pct=86.63%
 ```
 
 Both incumbents land well under a 97% compatibility bar, confirming the
-original finding at larger scale — extglobs and brace ranges are exactly
-where they fall down. `err` above is the same 568 cases across all three
+original finding at larger scale. `err` is the same 568 cases for all three
 matchers: patterns from picomatch's own error-handling tests (e.g.
-`+(a|b[)*`, an unterminated `[` inside an extglob group) that all three
-matchers reject as parse errors rather than accept.
+`+(a|b[)*`) that all three reject as parse errors.
 
-On the corpus built directly from micromatch's own test fixtures (the
-"seed corpus" — see Compatibility below), agreement is 99.81% (18,526/18,561
-against a real picomatch install). See Limitations for exactly what makes up
-the remaining gap on both corpora, with counts and examples.
+The committed, reproducible measurements are for this package only: 99.82%
+(18,528/18,561) on the corpus built from micromatch's own test fixtures, and
+99.94% (34,242/34,261) on the per-feature breakdown corpus. See Limitations
+for what makes up the remaining gap.
 
 ## Installation
 
@@ -147,7 +146,7 @@ globcompat.Braces("{a,b{c,d}}")     // ["a", "bc", "bd"]
 | `NoBrace` | bool | false | Disable `{...}` expansion. |
 | `NoExtglob` | bool | false | Disable `@() +() *() ?() !()`. |
 | `NoGlobstar` | bool | false | Treat `**` as `*`. |
-| `Basename` | bool | false | Slash-free patterns match only the last path segment (picomatch's `matchBase`). |
+| `Basename` | bool | false | Match the pattern against only the last path segment (picomatch's `matchBase`). |
 | `Contains` | bool | false | Match anywhere in the path, not just the whole string. |
 | `Posix` | bool | false | No-op: `[[:alpha:]]`-style classes are always honored (Go's regexp supports them natively). Kept for API parity with picomatch. |
 | `Windows` | bool | false | Treat `\` in the candidate path as `/`. Does not add drive-letter or UNC handling. |
@@ -187,36 +186,41 @@ by `O(nodes × len(input))` states; `Compile` also caps pattern length at
 
 ## Limitations
 
-What picomatch supports that this package does not, or only partially,
-verified against a real picomatch install (`go test -tags differential -run
-TestBreakdown -v ./...`, 900 cases per row unless noted):
+Verified against a real picomatch install with
+`go test -tags differential -run TestBreakdown -v ./...` (34,261 cases; 99.94%
+overall, 100% on every feature row except the seed row). The oracle wires
+picomatch's `expandRange` hook to the real `braces` package, so brace ranges
+score what fast-glob and lint-staged users get; bare `picomatch.isMatch`
+does not expand `{2..11}` at all (it compiles to a garbled `v[11-2]`).
 
-| Gap | Agreement | Example |
+Residual disagreements, all on the upstream-fixture "seed" row (19 of 13,561
+cases, 99.86%), by pattern shape:
+
+| Shape | Cases | Example (picomatch result) |
 | --- | --- | --- |
-| Extglob group containing a literal, unescaped `/` (e.g. `!(b/a)`) is parsed as part of one path segment instead of crossing a real segment boundary | 91.0% on the `seed-extglob` corpus row (11,573 cases; this single pattern shape accounts for essentially all of the gap) | `isMatch('a/b', '!(b/a)')` is `true` in picomatch; this package returns `false` |
-| A nullable extglob quantifier (`*(x)`, `?(x)`, `!(x)`) that matches zero characters is not required to be non-empty the way picomatch requires the *whole match* to be non-empty | `*(foo\|bar)`: 84.7%, `?(foo\|bar)`: 82.1%, `!(foo\|bar)`: 84.2% | `isMatch('', '*(ab)')` is `false` in picomatch; this package returns `true` |
-| `noextglob` does not disable the `!(...)` form the way it disables `@()`/`+()`/`*()`/`?()` — verified as picomatch's own behaviour, not a guess: picomatch still compiles `!(foo)` to a negation regex with `noextglob: true` | `opt-noextglob`: 82.7% | `pm.isMatch('.hidden', '!(foo)', {noextglob:true})` is `true` in picomatch; this package treats `!(foo)` as four literal characters once `NoExtglob` is set, so it returns `false` |
-| `noglobstar` on a pattern like `**/*` doesn't fully replicate picomatch's fallback behaviour for paths without a matching number of segments | `opt-noglobstar`: 96.1% | `isMatch('a', '**/*', {noglobstar:true})` is `true` in picomatch (a single segment still matches); this package requires two segments once `**` stops being special |
-| `basename`/`contains` combined with a dotfile deep in the path | `opt-basename`: 97.3%, `opt-contains`: 96.6% | `isMatch('.git/test.js', '**/*', {contains:true})` is `true` in picomatch; this package's `Contains` doesn't hide dotfiles the same way inside a substring search |
-| Patterns with an unterminated `[` inside an extglob group (e.g. `+(a|b[)*`) are rejected as a parse error instead of picomatch's specific bracket-recovery heuristic | 568 cases across the whole 37,134-case corpus, identical set for every matcher tested (see Why) | These are drawn from picomatch's own error-handling tests, not real-world globs |
-| `nonegate`/double-negation edge cases (`!!(foo)`) | not separately measured | Undefined behaviour here; picomatch's own handling of this is also not documented |
-| `windows` only rewrites `\` to `/` in the candidate path | not separately measured | No drive-letter or UNC handling |
+| Dot-directory names `.`, `..`, `./` against a pattern whose last segment is `.*` or `.{*,x}` | 15 | `isMatch('..', '**/**/.*')` is false; this package returns true |
+| Bare parentheses without an extglob prefix, treated as a group by picomatch | 1 | `isMatch('a/b/c.md', '**/(a\|b)/*.{js,md}')` is true; this package treats `(a\|b)` as literal text |
+| Leading `/` combined with `**` and a trailing slash in the path | 1 | `isMatch('/a/', '/**/*')` is false; this package returns true |
 
-Not a bug, but worth stating plainly: plain `picomatch.isMatch` (and
-`micromatch.isMatch`, which delegates to it) does **not** expand numeric
-brace ranges like `{2..11}` by default — that needs an `expandRange`
-callback the caller supplies, which neither library's `isMatch` does on its
-own (confirmed by reading `pm.makeRe('v{2..11}').source`, which comes out as
-a garbled character class, not a range). This package's own `Braces()`
-*does* expand these correctly — verified directly against the real `braces`
-npm package, which is what micromatch's CLI-facing brace expansion actually
-uses — so a caller that pre-expands braces with `Braces()` before matching
-(the way `fast-glob` and `lint-staged` configs assume braces work) gets the
-range expansion right. The `brace-range-num`/`brace-range-alpha`/
-`brace-step-pad` rows in the differential breakdown measure agreement
-against bare `picomatch.isMatch`, so they show this same gap in reverse —
-low agreement there reflects the oracle not expanding the range, not this
-package computing the wrong range.
+Other known gaps, not covered by the corpus:
+
+- An extglob group containing a literal `/` (e.g. `!(b/a)`) is parsed inside
+  one path segment instead of crossing a segment boundary. This was the
+  largest gap on an earlier corpus that included picomatch's own extglob
+  test patterns; it is architectural and unchanged.
+- The `noextglob` quirk is reproduced only for a pattern that is exactly
+  `!(a|b)`: picomatch then treats the leading `!` as whole-pattern negation
+  and the group as bare parentheses matching the entire path (across `/`).
+  Alternatives are parsed as ordinary glob text, which is an approximation.
+- `requireNonEmpty` (an extglob opening the pattern needs a non-empty path,
+  as in picomatch) is applied to the whole pattern, not per brace
+  alternative.
+- 568 patterns from picomatch's own error-handling tests (e.g. `+(a|b[)*`,
+  an unterminated `[` inside an extglob group) are rejected as parse errors
+  here, by doublestar and by gobwas/glob alike. They came from an earlier,
+  larger extglob-heavy corpus and are not in the current breakdown.
+- `nonegate`/double-negation edge cases (`!!(foo)`) are not separately
+  measured; `windows` only rewrites `\` to `/` (no drive letters or UNC).
 
 Only the options listed in the `Options` table above are implemented;
 picomatch's `bash`, `capture`, `expandRange`, `maxLength`,
@@ -248,7 +252,7 @@ agreement drops below 99.5%. Last real run:
 
 ```
 oracle run over 18561 cases took 99.54ms
-agreement with picomatch: 18526/18561 (99.81%)
+agreement with picomatch: 18528/18561 (99.82%)
 ```
 
 `go test -tags differential -run TestBreakdown -v ./...` is the

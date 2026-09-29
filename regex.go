@@ -62,7 +62,15 @@ func renderSegments(segs []segment, opts Options, altPrefix string) (re string, 
 			}
 			continue
 		}
-		if idx > 0 && !segs[idx-1].globstar {
+		if s.optional {
+			if opts.Dot {
+				sb.WriteString(`(?:[^/]*/)?`)
+			} else {
+				sb.WriteString(`(?:(?:[^/.][^/]*)?/)?`)
+			}
+			continue
+		}
+		if idx > 0 && !segs[idx-1].globstar && !segs[idx-1].optional {
 			sb.WriteString("/")
 		}
 		isLastSeg := idx == n-1
@@ -261,6 +269,28 @@ func renderClass(cls classSpec) string {
 		return "[^" + src + "]"
 	}
 	return "[" + src + "]"
+}
+
+// patternStartsWithExtglob reports whether the very first node of the whole
+// (brace-expanded) pattern is an extglob group of any kind. picomatch's own
+// parser inserts a "(?=.)" (require at least one more character) right
+// before an extglob specifically when nothing has been emitted yet at that
+// point — i.e. the extglob opens the entire pattern — regardless of extglob
+// kind, so even "*(x)" and "?(x)", which otherwise allow zero repetitions,
+// cannot bring the *overall* match down to the empty string when they start
+// the pattern. Verified against picomatch: isMatch(”, '*(ab)'),
+// isMatch(”, '?(foo|bar)') and isMatch(”, '!(foo|bar)') are all false.
+// This is checked once as "path must be non-empty" (see Matcher.matchInner)
+// rather than woven into the regex, which is exact for the overwhelmingly
+// common case of one alternative and a reasonable approximation when brace
+// expansion produces several: it would incorrectly reject an empty path for
+// every alternative if only *some* of a pattern's brace alternatives start
+// with an extglob, which is a vanishingly rare shape to write deliberately.
+func patternStartsWithExtglob(segs []segment) bool {
+	if len(segs) == 0 || segs[0].globstar || len(segs[0].nodes) == 0 {
+		return false
+	}
+	return segs[0].nodes[0].kind == nExt
 }
 
 // containsNegatedExtglob reports whether any segment's node tree contains a

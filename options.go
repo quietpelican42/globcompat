@@ -23,12 +23,14 @@ type Options struct {
 	NoExtglob bool
 
 	// NoGlobstar disables "**" descending through multiple path segments;
-	// it is treated as an ordinary "*" instead (still segment-bound).
+	// it is treated as an ordinary "*" instead (still segment-bound), except a
+	// leading "**/" which becomes an optional single segment, as in picomatch.
 	NoGlobstar bool
 
-	// Basename (picomatch's matchBase) matches a slash-free pattern against
+	// Basename (picomatch's matchBase) matches the pattern against
 	// only the last path segment of the candidate, ignoring any directory
-	// prefix. It has no effect when the pattern itself contains a slash.
+	// prefix, even when the pattern itself contains a slash (verified: picomatch
+	// with basename:true rejects isMatch('dir/a.go', 'dir/*')).
 	Basename bool
 
 	// Contains matches the pattern anywhere inside the path instead of
