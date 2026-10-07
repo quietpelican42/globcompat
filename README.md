@@ -66,7 +66,7 @@ for what makes up the remaining gap.
 ## Installation
 
 ```sh
-go get github.com/__GH_OWNER__/globcompat
+go get github.com/quietpelican42/globcompat
 ```
 
 Requires Go 1.21+. No runtime dependencies — stdlib only.

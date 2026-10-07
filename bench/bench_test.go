@@ -10,8 +10,8 @@ package bench
 import (
 	"testing"
 
-	gc "github.com/__GH_OWNER__/globcompat"
 	"github.com/bmatcuk/doublestar/v4"
+	gc "github.com/quietpelican42/globcompat"
 )
 
 var cases = []struct {

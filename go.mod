@@ -1,3 +1,3 @@
-module github.com/__GH_OWNER__/globcompat
+module github.com/quietpelican42/globcompat
 
 go 1.27.1
